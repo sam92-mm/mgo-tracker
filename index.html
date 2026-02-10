@@ -3,128 +3,102 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MGO Ultimate Live Tracker</title>
+    <title>MGO Live Tracker</title>
     <style>
         :root { --p: #2ecc71; --s: #3498db; --d: #2c3e50; --bg: #f4f7f6; --err: #e74c3c; }
-        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); margin: 0; padding: 15px; color: var(--d); }
-        .app { max-width: 450px; margin: 0 auto; background: white; border-radius: 25px; box-shadow: 0 15px 35px rgba(0,0,0,0.1); overflow: hidden; }
-        
-        .header { background: var(--d); color: white; padding: 25px 20px; text-align: center; }
-        .clock { font-family: 'Courier New', monospace; font-size: 32px; font-weight: bold; color: var(--p); margin-bottom: 5px; }
-        .date { font-size: 14px; opacity: 0.8; text-transform: capitalize; }
-
-        .status-bar { font-size: 10px; padding: 8px; text-align: center; font-weight: bold; background: #eee; border-bottom: 1px solid #ddd; }
-        .status-ok { color: #27ae60; }
-        .status-load { color: #f39c12; }
-
-        .event-list { min-height: 200px; }
-        .card { display: flex; justify-content: space-between; align-items: center; padding: 18px 20px; border-bottom: 1px solid #f8f9fa; transition: 0.2s; }
-        .card:last-child { border-bottom: none; }
-        
-        .card.live { border-left: 6px solid var(--err); background: #fff5f5; }
-        .card.past { opacity: 0.4; filter: grayscale(1); }
-
-        .name { font-weight: bold; font-size: 16px; margin-bottom: 4px; }
-        .time { font-family: monospace; font-weight: bold; color: var(--s); font-size: 14px; }
-        .live-tag { background: var(--err); color: white; font-size: 10px; padding: 3px 8px; border-radius: 5px; font-weight: bold; display: inline-block; animation: blink 1.5s infinite; }
-        
-        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
-        
-        .loader { padding: 50px; text-align: center; color: #95a5a6; }
-        .btn-sync { background: var(--p); color: white; border: none; padding: 12px; width: 100%; font-weight: bold; cursor: pointer; font-size: 14px; }
-        .btn-sync:hover { background: #27ae60; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); margin: 0; padding: 15px; }
+        .app { max-width: 450px; margin: 0 auto; background: white; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); overflow: hidden; }
+        .header { background: var(--d); color: white; padding: 20px; text-align: center; }
+        .clock { font-family: monospace; font-size: 28px; color: var(--p); }
+        .status-bar { font-size: 11px; padding: 8px; text-align: center; background: #eee; font-weight: bold; }
+        .card { display: flex; justify-content: space-between; padding: 15px 20px; border-bottom: 1px solid #eee; align-items: center; }
+        .card.live { border-left: 5px solid var(--err); background: #fff5f5; }
+        .name { font-weight: bold; }
+        .time { color: var(--s); font-family: monospace; }
+        .loader { padding: 40px; text-align: center; color: #7f8c8d; }
+        button { background: var(--p); color: white; border: none; padding: 15px; width: 100%; font-weight: bold; cursor: pointer; }
     </style>
 </head>
 <body>
 
 <div class="app">
-    <div id="status" class="status-bar status-load">YHDISTETÄÄN GOOGLE-TUNNELIIN...</div>
-    
+    <div id="status" class="status-bar">VALMISTELLAAN HAKUA...</div>
     <div class="header">
         <div id="clock" class="clock">00:00:00</div>
-        <div id="date" class="date">ladataan päivämäärää...</div>
+        <div id="date">Ladataan...</div>
     </div>
-
     <div id="eventList" class="event-list">
-        <div class="loader">Haetaan tuoreimmat tapahtumat suoraan Wikistä...</div>
+        <div class="loader">Yritetään ohittaa Wikin suojaus...</div>
     </div>
-
-    <button class="btn-sync" onclick="fetchFromGoogle()">PÄIVITÄ NYT</button>
+    <button onclick="fetchEvents()">PÄIVITÄ LISTA</button>
 </div>
 
 <script>
-    // VAIHDA TÄHÄN GOOGLE APPS SCRIPT URL-OSOITTEESI
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwPGHPle622MJ5qw7EFTIsfaT5pLkDmOO5GHcmh5lsiNnY-EkTsRERzNxwM0tbt07287Q/exec";
-
-    async function fetchFromGoogle() {
+    async function fetchEvents() {
         const status = document.getElementById('status');
         const list = document.getElementById('eventList');
         
-        status.innerText = "HAETAAN DATAA...";
-        status.className = "status-bar status-load";
+        // Luodaan tämän päivän URL dynaamisesti (February 10, 2026)
+        const d = new Date();
+        const monthL = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"][d.getMonth()];
+        const targetUrl = `https://monopolygo.wiki/todays-events-${monthL}-${d.getDate()}-${d.getFullYear()}/`;
+        
+        // Käytetään AllOrigins-proxyä
+        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+
+        status.innerText = "YHDISTETÄÄN VÄLITYSPALVELIMEEN...";
 
         try {
-            const response = await fetch(SCRIPT_URL);
+            const response = await fetch(proxyUrl);
             const data = await response.json();
+            const html = data.contents;
 
-            if (!data.events || data.events.length === 0) {
-                throw new Error("Ei tapahtumia");
+            if (!html) throw new Error("Sivua ei voitu ladata.");
+
+            const events = [];
+            // Etsitään kelloajat ja nimet HTML-massasta
+            const regex = /(\d{1,2}:\d{2}\s*(?:AM|PM)?\s*-\s*\d{1,2}:\d{2}\s*(?:AM|PM)?)[^>]*>([^<]+)/gi;
+            
+            let match;
+            while ((match = regex.exec(html)) !== null) {
+                let time = match[1].trim();
+                let name = match[2].trim();
+                if (name.length > 2 && name.length < 50 && !name.includes("{")) {
+                    events.push({ time, name });
+                }
             }
 
-            status.innerText = "YHTEYS OK • PÄIVITETTY: " + new Date().toLocaleTimeString('fi-FI');
-            status.className = "status-bar status-ok";
-            render(data.events);
+            if (events.length === 0) {
+                status.innerText = "WIKI ESTI MYÖS TÄMÄN YRITYKSEN (403)";
+                list.innerHTML = `<div class="loader">Suojaus on liian vahva automaattiseen hakuun juuri nyt.</div>`;
+                return;
+            }
+
+            status.innerText = "PÄIVITETTY " + new Date().toLocaleTimeString();
+            render(events);
 
         } catch (e) {
-            status.innerText = "WIKI-SIVU EI OLE VIELÄ VALMIS TÄLLE PÄIVÄLLE";
-            status.className = "status-bar";
-            list.innerHTML = `<div class="loader">Ei tapahtumia saatavilla.<br><small>Yritä myöhemmin uudelleen.</small></div>`;
+            status.innerText = "VIRHE YHTEYDESSÄ";
+            list.innerHTML = `<div class="loader">Yhteys epäonnistui.</div>`;
         }
     }
 
     function render(events) {
         const list = document.getElementById('eventList');
-        const now = new Date();
-        const curTotal = (now.getHours() * 60) + now.getMinutes();
-
-        list.innerHTML = events.map(ev => {
-            const parseMin = (s) => {
-                const m = s.match(/(\d+):(\d+)\s*(AM|PM)?/i);
-                if(!m) return 0;
-                let h = parseInt(m[1]);
-                if(m[3]?.toUpperCase()==="PM" && h<12) h+=12;
-                if(m[3]?.toUpperCase()==="AM" && h===12) h=0;
-                return (h*60)+parseInt(m[2]);
-            };
-
-            const times = ev.time.split('-').map(t => t.trim());
-            const start = parseMin(times[0]);
-            const end = parseMin(times[1]);
-            
-            const isLive = curTotal >= start && curTotal < end;
-            const isPast = curTotal >= end;
-
-            return `
-                <div class="card ${isLive ? 'live' : ''} ${isPast ? 'past' : ''}">
-                    <div>
-                        <div class="name">${ev.name}</div>
-                        ${isLive ? '<span class="live-tag">LIVE NYT</span>' : ''}
-                    </div>
-                    <div class="time">${ev.time}</div>
-                </div>
-            `;
-        }).join('');
+        list.innerHTML = events.map(ev => `
+            <div class="card">
+                <div class="name">${ev.name}</div>
+                <div class="time">${ev.time}</div>
+            </div>
+        `).join('');
     }
 
-    // Päivitä kello ja päivämäärä
     setInterval(() => {
-        const d = new Date();
-        document.getElementById('clock').innerText = d.toLocaleTimeString('fi-FI');
-        document.getElementById('date').innerText = d.toLocaleDateString('fi-FI', {weekday:'long', day:'numeric', month:'long'});
+        document.getElementById('clock').innerText = new Date().toLocaleTimeString('fi-FI');
+        document.getElementById('date').innerText = new Date().toLocaleDateString('fi-FI', {weekday:'long', day:'numeric', month:'long'});
     }, 1000);
 
-    // Lataa data heti alussa
-    window.onload = fetchFromGoogle;
+    window.onload = fetchEvents;
 </script>
 
 </body>
