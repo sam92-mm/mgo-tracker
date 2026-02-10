@@ -1,0 +1,20 @@
+name: MGO-Päivitys
+on:
+  schedule:
+    - cron: '0 * * * *' # Ajaa päivityksen kerran tunnissa
+  workflow_dispatch: # Sallii manuaalisen käynnistyksen
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Aja haku
+        run: node scraper.js
+      - name: Tallenna muutokset
+        run: |
+          git config --global user.name "MGO-Bot"
+          git config --global user.email "bot@github.com"
+          git add data.json
+          git commit -m "Automaattinen päivitys" || exit 0
+          git push
