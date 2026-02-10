@@ -11,15 +11,19 @@ async function scrape() {
         const response = await fetch(url);
         const html = await response.text();
         
-        // Etsitään tapahtumat HTML-koodista
-        const regex = /(\d{1,2}:\d{2}\s*(?:AM|PM)?\s*-\s*\d{1,2}:\d{2}\s*(?:AM|PM)?)\s*(.*?)(?=<|$)/gi;
-        let matches;
         const events = [];
+        
+        // UUSI PARSERI: Etsii taulukon rivit <tr> ja solut <td>
+        // Tämä on huomattavasti varmempi tapa kuin pelkkä tekstihaku
+        const rowRegex = /<tr><td>(.*?)<\/td><td>(.*?)<\/td>/gi;
+        let match;
 
-        while ((matches = regex.exec(html)) !== null) {
-            const time = matches[1].trim();
-            const name = matches[2].trim();
-            if (name.length > 3 && name.length < 50) {
+        while ((match = rowRegex.exec(html)) !== null) {
+            let time = match[1].replace(/<[^>]*>?/gm, '').trim(); // Poistaa mahdolliset HTML-tagit
+            let name = match[2].replace(/<[^>]*>?/gm, '').trim();
+
+            // Varmistetaan, että rivi sisältää kellonajan (numeroita)
+            if (time.match(/\d/) && name.length > 2) {
                 events.push({ time, name });
             }
         }
@@ -30,7 +34,8 @@ async function scrape() {
         };
 
         fs.writeFileSync('data.json', JSON.stringify(output, null, 2));
-        console.log("Data tallennettu tiedostoon data.json");
+        console.log(`Löytyi ${events.length} tapahtumaa.`);
+        
     } catch (e) {
         console.error("Haku epäonnistui: ", e);
         process.exit(1);
