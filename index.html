@@ -1,17 +1,131 @@
-async function fetchEvents() {
-    const SCRIPT_URL = "https://script.google.com/macros/library/d/1yydS1ATMRzho5ZwdO-t3moftMhsSTYUILu8nknAkgPTJWXbtQbYQpf8k/1
-";
-    
-    try {
-        const response = await fetch(SCRIPT_URL);
-        const data = await response.json();
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MGO Ultimate Live Tracker</title>
+    <style>
+        :root { --p: #2ecc71; --s: #3498db; --d: #2c3e50; --bg: #f4f7f6; --err: #e74c3c; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); margin: 0; padding: 15px; color: var(--d); }
+        .app { max-width: 450px; margin: 0 auto; background: white; border-radius: 25px; box-shadow: 0 15px 35px rgba(0,0,0,0.1); overflow: hidden; }
         
-        if (data.events && data.events.length > 0) {
-            render(data.events, data.updated);
-        } else {
-            document.getElementById('eventList').innerHTML = "Ei tapahtumia tälle päivälle vielä.";
+        .header { background: var(--d); color: white; padding: 25px 20px; text-align: center; }
+        .clock { font-family: 'Courier New', monospace; font-size: 32px; font-weight: bold; color: var(--p); margin-bottom: 5px; }
+        .date { font-size: 14px; opacity: 0.8; text-transform: capitalize; }
+
+        .status-bar { font-size: 10px; padding: 8px; text-align: center; font-weight: bold; background: #eee; border-bottom: 1px solid #ddd; }
+        .status-ok { color: #27ae60; }
+        .status-load { color: #f39c12; }
+
+        .event-list { min-height: 200px; }
+        .card { display: flex; justify-content: space-between; align-items: center; padding: 18px 20px; border-bottom: 1px solid #f8f9fa; transition: 0.2s; }
+        .card:last-child { border-bottom: none; }
+        
+        .card.live { border-left: 6px solid var(--err); background: #fff5f5; }
+        .card.past { opacity: 0.4; filter: grayscale(1); }
+
+        .name { font-weight: bold; font-size: 16px; margin-bottom: 4px; }
+        .time { font-family: monospace; font-weight: bold; color: var(--s); font-size: 14px; }
+        .live-tag { background: var(--err); color: white; font-size: 10px; padding: 3px 8px; border-radius: 5px; font-weight: bold; display: inline-block; animation: blink 1.5s infinite; }
+        
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+        
+        .loader { padding: 50px; text-align: center; color: #95a5a6; }
+        .btn-sync { background: var(--p); color: white; border: none; padding: 12px; width: 100%; font-weight: bold; cursor: pointer; font-size: 14px; }
+        .btn-sync:hover { background: #27ae60; }
+    </style>
+</head>
+<body>
+
+<div class="app">
+    <div id="status" class="status-bar status-load">YHDISTETÄÄN GOOGLE-TUNNELIIN...</div>
+    
+    <div class="header">
+        <div id="clock" class="clock">00:00:00</div>
+        <div id="date" class="date">ladataan päivämäärää...</div>
+    </div>
+
+    <div id="eventList" class="event-list">
+        <div class="loader">Haetaan tuoreimmat tapahtumat suoraan Wikistä...</div>
+    </div>
+
+    <button class="btn-sync" onclick="fetchFromGoogle()">PÄIVITÄ NYT</button>
+</div>
+
+<script>
+    // VAIHDA TÄHÄN GOOGLE APPS SCRIPT URL-OSOITTEESI
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbywYcsQGhS59jxJPl2MERhmXejWuMFAEv3JmzM1WtiSsQsndfcHfGADbcZGMS2PYjaOow/exec";
+
+    async function fetchFromGoogle() {
+        const status = document.getElementById('status');
+        const list = document.getElementById('eventList');
+        
+        status.innerText = "HAETAAN DATAA...";
+        status.className = "status-bar status-load";
+
+        try {
+            const response = await fetch(SCRIPT_URL);
+            const data = await response.json();
+
+            if (!data.events || data.events.length === 0) {
+                throw new Error("Ei tapahtumia");
+            }
+
+            status.innerText = "YHTEYS OK • PÄIVITETTY: " + new Date().toLocaleTimeString('fi-FI');
+            status.className = "status-bar status-ok";
+            render(data.events);
+
+        } catch (e) {
+            status.innerText = "WIKI-SIVU EI OLE VIELÄ VALMIS TÄLLE PÄIVÄLLE";
+            status.className = "status-bar";
+            list.innerHTML = `<div class="loader">Ei tapahtumia saatavilla.<br><small>Yritä myöhemmin uudelleen.</small></div>`;
         }
-    } catch (error) {
-        console.error("Virhe:", error);
     }
-}
+
+    function render(events) {
+        const list = document.getElementById('eventList');
+        const now = new Date();
+        const curTotal = (now.getHours() * 60) + now.getMinutes();
+
+        list.innerHTML = events.map(ev => {
+            const parseMin = (s) => {
+                const m = s.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+                if(!m) return 0;
+                let h = parseInt(m[1]);
+                if(m[3]?.toUpperCase()==="PM" && h<12) h+=12;
+                if(m[3]?.toUpperCase()==="AM" && h===12) h=0;
+                return (h*60)+parseInt(m[2]);
+            };
+
+            const times = ev.time.split('-').map(t => t.trim());
+            const start = parseMin(times[0]);
+            const end = parseMin(times[1]);
+            
+            const isLive = curTotal >= start && curTotal < end;
+            const isPast = curTotal >= end;
+
+            return `
+                <div class="card ${isLive ? 'live' : ''} ${isPast ? 'past' : ''}">
+                    <div>
+                        <div class="name">${ev.name}</div>
+                        ${isLive ? '<span class="live-tag">LIVE NYT</span>' : ''}
+                    </div>
+                    <div class="time">${ev.time}</div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // Päivitä kello ja päivämäärä
+    setInterval(() => {
+        const d = new Date();
+        document.getElementById('clock').innerText = d.toLocaleTimeString('fi-FI');
+        document.getElementById('date').innerText = d.toLocaleDateString('fi-FI', {weekday:'long', day:'numeric', month:'long'});
+    }, 1000);
+
+    // Lataa data heti alussa
+    window.onload = fetchFromGoogle;
+</script>
+
+</body>
+</html>
