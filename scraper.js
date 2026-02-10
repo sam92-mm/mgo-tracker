@@ -1,52 +1,56 @@
 const fs = require('fs');
 
 async function scrape() {
+    const d = new Date();
+    const monthShorts = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+    const month = monthShorts[d.getMonth()];
+    const day = d.getDate();
+    const year = d.getFullYear();
+
+    // Osoite, jonka sanoit olevan livenä
+    const targetUrl = `https://monopolygo.wiki/todays-events-${month}-${day}-${year}/`;
+
+    console.log("Yritetään hakea: " + targetUrl);
+
     try {
-        // 1. Mennään ensin Wikin etusivulle
-        const mainResponse = await fetch("https://monopolygo.wiki/");
-        const mainHtml = await mainResponse.text();
-        
-        // 2. Etsitään etusivulta linkki, joka viittaa päivän tapahtumiin
-        // Etsii kaavaa: /todays-events-.../
-        const linkMatch = mainHtml.match(/\/todays-events-[a-z0-9-]+\//i);
-        
-        if (!linkMatch) {
-            console.error("Päivän tapahtumalinkkiä ei löytynyt etusivulta.");
-            // Luodaan tyhjä tiedosto, jotta HTML ei hajoa
-            fs.writeFileSync('data.json', JSON.stringify({ updated: new Date(), events: [], note: "Linkkiä ei löytynyt" }, null, 2));
+        const response = await fetch(targetUrl, {
+            headers: {
+                // TÄMÄ ON TÄRKEÄ: Teeskennellään olevamme tavallinen Chrome-selain
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Cache-Control': 'no-cache'
+            }
+        });
+
+        if (!response.ok) {
+            console.error(`Virhe: Wiki vastasi tilakoodilla ${response.status}`);
+            // Jos haku epäonnistuu, ei ylikirjoiteta vanhaa toimivaa dataa
             return;
         }
 
-        const targetUrl = "https://monopolygo.wiki" + linkMatch[0];
-        console.log("Löytyi dynaaminen URL: " + targetUrl);
-
-        // 3. Haetaan varsinainen tapahtumasivu
-        const response = await fetch(targetUrl);
         const html = await response.text();
-        
         const events = [];
-        
-        // 4. Etsitään tapahtumat (kokeillaan useaa eri kaavaa)
-        // Kaava A: Taulukko-solut
-        const tableRegex = /<td>(\d{1,2}:\d{2}\s*(?:AM|PM)?\s*-\s*\d{1,2}:\d{2}\s*(?:AM|PM)?)<\/td><td>(.*?)<\/td>/gi;
-        let match;
 
-        while ((match = tableRegex.exec(html)) !== null) {
-            let name = match[2].replace(/<[^>]*>?/gm, '').trim();
-            if (name.length > 2 && name.length < 100) {
-                events.push({ time: match[1].trim(), name: name });
+        // Käytetään erittäin joustavaa etsintää, joka poimii ajan ja nimen
+        // Etsii kaavaa: 11:00 AM - 12:00 PM jossain solussa
+        const pattern = /(\d{1,2}:\d{2}\s*(?:AM|PM)?\s*-\s*\d{1,2}:\d{2}\s*(?:AM|PM)?)(?:<\/td><td>|[^<]*>)(.*?)(?:<\/td>|<\/div>|<br>)/gi;
+        
+        let match;
+        while ((match = pattern.exec(html)) !== null) {
+            let time = match[1].trim();
+            let name = match[2].replace(/<[^>]*>?/gm, '').trim(); // Siivotaan HTML
+            
+            if (name && name.length > 2 && name.length < 60) {
+                events.push({ time, name });
             }
         }
 
-        // 5. Jos taulukko ei tärpännyt, kokeillaan yleistä tekstihakua
         if (events.length === 0) {
-            const textRegex = /(\d{1,2}:\d{2}\s*(?:AM|PM)?\s*-\s*\d{1,2}:\d{2}\s*(?:AM|PM)?)\s+(.*)/gi;
-            while ((match = textRegex.exec(html)) !== null) {
-                let name = match[2].split('<')[0].trim();
-                if (name.length > 2 && name.length < 50) {
-                    events.push({ time: match[1].trim(), name: name });
-                }
-            }
+            console.log("Sivu löytyi, mutta parseri ei löytänyt tapahtumia. HTML-rakenne on saattanut muuttua.");
+            // Tulostetaan pätkä HTML:ää lokiin, jotta näet missä vika
+            console.log("HTML alku:", html.substring(0, 500));
+            return;
         }
 
         const output = {
@@ -56,11 +60,10 @@ async function scrape() {
         };
 
         fs.writeFileSync('data.json', JSON.stringify(output, null, 2));
-        console.log(`Valmis! Löytyi ${events.length} tapahtumaa osoitteesta ${targetUrl}`);
+        console.log(`Onnistui! Löytyi ${events.length} tapahtumaa.`);
 
     } catch (e) {
-        console.error("Kriittinen virhe:", e);
-        process.exit(1);
+        console.error("Kriittinen virhe haussa:", e.message);
     }
 }
 
